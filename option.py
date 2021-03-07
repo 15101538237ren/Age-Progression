@@ -28,7 +28,7 @@ parser.add_argument(
              '\tUse this option if you only wish to collect statistics and validation results.{br}'
              'All options except \'never\' will also save when interrupted by the user.'.format(br=os.linesep)
     )
-parser.add_argument('--epochs', '-e', default=1, type=int)
+parser.add_argument('--epochs', '-e', default=150, type=int)
 parser.add_argument('--batch-size', '--bs', dest='batch_size', default=64, type=int)
 parser.add_argument('--weight-decay', '--wd', dest='weight_decay', default=1e-5, type=float)
 parser.add_argument('--learning-rate', '--lr', dest='learning_rate', default=2e-4, type=float)

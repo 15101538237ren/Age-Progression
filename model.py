@@ -326,78 +326,78 @@ class Net(object):
                     losses = defaultdict(lambda: [])
 
                     self.train()  # move to train mode
+                    for i, (images, labels) in enumerate(tqdm(train_loader)):
+                        if i < len(train_loader) - 1:
+                            images = images.to(device=self.device)
+                            labels = torch.stack([str_to_tensor(idx_to_class[l], normalize=True) for l in list(labels.numpy())])  # todo - can remove list() ?
+                            labels = labels.to(device=self.device)
+                            # print ("DEBUG: iteration: "+str(i)+" images shape: "+str(images.shape))
+                            z = self.E(images)
 
-                    for images, labels in tqdm(train_loader):
-                        images = images.to(device=self.device)
-                        labels = torch.stack([str_to_tensor(idx_to_class[l], normalize=True) for l in list(labels.numpy())])  # todo - can remove list() ?
-                        labels = labels.to(device=self.device)
-                        # print ("DEBUG: iteration: "+str(i)+" images shape: "+str(images.shape))
-                        z = self.E(images)
+                            # Input\Output Loss
+                            z_l = torch.cat((z, labels), 1)
+                            generated = self.G(z_l)
+                            eg_loss = input_output_loss(generated, images)
+                            losses['eg'].append(eg_loss.item())
 
-                        # Input\Output Loss
-                        z_l = torch.cat((z, labels), 1)
-                        generated = self.G(z_l)
-                        eg_loss = input_output_loss(generated, images)
-                        losses['eg'].append(eg_loss.item())
+                            # Total Variance Regularization Loss
+                            reg = l1_loss(generated[:, :, :, :-1], generated[:, :, :, 1:]) + l1_loss(generated[:, :, :-1, :], generated[:, :, 1:, :])
 
-                        # Total Variance Regularization Loss
-                        reg = l1_loss(generated[:, :, :, :-1], generated[:, :, :, 1:]) + l1_loss(generated[:, :, :-1, :], generated[:, :, 1:, :])
+                            reg_loss = 0 * reg
+                            reg_loss.to(self.device)
+                            losses['reg'].append(reg_loss.item())
 
-                        reg_loss = 0 * reg
-                        reg_loss.to(self.device)
-                        losses['reg'].append(reg_loss.item())
+                            # DiscriminatorZ Loss
+                            z_prior = two_sided(torch.rand_like(z, device=self.device))  # [-1 : 1]
+                            d_z_prior = self.Dz(z_prior)
+                            d_z = self.Dz(z)
+                            dz_loss_prior = bce_with_logits_loss(d_z_prior, torch.ones_like(d_z_prior))
+                            dz_loss = bce_with_logits_loss(d_z.detach(), torch.zeros_like(d_z))
+                            dz_loss_tot = (dz_loss + dz_loss_prior)
+                            losses['dz'].append(dz_loss_tot.item())
 
-                        # DiscriminatorZ Loss
-                        z_prior = two_sided(torch.rand_like(z, device=self.device))  # [-1 : 1]
-                        d_z_prior = self.Dz(z_prior)
-                        d_z = self.Dz(z)
-                        dz_loss_prior = bce_with_logits_loss(d_z_prior, torch.ones_like(d_z_prior))
-                        dz_loss = bce_with_logits_loss(d_z.detach(), torch.zeros_like(d_z))
-                        dz_loss_tot = (dz_loss + dz_loss_prior)
-                        losses['dz'].append(dz_loss_tot.item())
+                            # Encoder\DiscriminatorZ Loss
+                            ez_loss = 0.0001 * bce_with_logits_loss(d_z, torch.ones_like(d_z))
+                            ez_loss.to(self.device)
+                            losses['ez'].append(ez_loss.item())
 
-                        # Encoder\DiscriminatorZ Loss
-                        ez_loss = 0.0001 * bce_with_logits_loss(d_z, torch.ones_like(d_z))
-                        ez_loss.to(self.device)
-                        losses['ez'].append(ez_loss.item())
+                            # DiscriminatorImg Loss
+                            d_i_input = self.Dimg(images, labels, self.device)
+                            d_i_output = self.Dimg(generated, labels, self.device)
 
-                        # DiscriminatorImg Loss
-                        d_i_input = self.Dimg(images, labels, self.device)
-                        d_i_output = self.Dimg(generated, labels, self.device)
+                            di_input_loss = bce_with_logits_loss(d_i_input, torch.ones_like(d_i_input))
+                            di_output_loss = bce_with_logits_loss(d_i_output.detach(), torch.zeros_like(d_i_output))
+                            di_loss_tot = (di_input_loss + di_output_loss)
+                            losses['di'].append(di_loss_tot.item())
 
-                        di_input_loss = bce_with_logits_loss(d_i_input, torch.ones_like(d_i_input))
-                        di_output_loss = bce_with_logits_loss(d_i_output.detach(), torch.zeros_like(d_i_output))
-                        di_loss_tot = (di_input_loss + di_output_loss)
-                        losses['di'].append(di_loss_tot.item())
+                            # Generator\DiscriminatorImg Loss
+                            dg_loss = 0.0001 * bce_with_logits_loss(d_i_output, torch.ones_like(d_i_output))
+                            dg_loss.to(self.device)
+                            losses['dg'].append(dg_loss.item())
 
-                        # Generator\DiscriminatorImg Loss
-                        dg_loss = 0.0001 * bce_with_logits_loss(d_i_output, torch.ones_like(d_i_output))
-                        dg_loss.to(self.device)
-                        losses['dg'].append(dg_loss.item())
+                            # Start back propagation
 
-                        # Start back propagation
+                            # Back prop on Encoder\Generator
+                            self.eg_optimizer.zero_grad()
+                            loss = eg_loss + reg_loss + ez_loss + dg_loss
+                            loss.backward(retain_graph=True)
+                            self.eg_optimizer.step()
 
-                        # Back prop on Encoder\Generator
-                        self.eg_optimizer.zero_grad()
-                        loss = eg_loss + reg_loss + ez_loss + dg_loss
-                        loss.backward(retain_graph=True)
-                        self.eg_optimizer.step()
+                            # Back prop on DiscriminatorZ
 
-                        # Back prop on DiscriminatorZ
+                            self.dz_optimizer.zero_grad()
+                            dz_loss_tot.backward(retain_graph=True)
+                            self.dz_optimizer.step()
 
-                        self.dz_optimizer.zero_grad()
-                        dz_loss_tot.backward(retain_graph=True)
-                        self.dz_optimizer.step()
+                            # Back prop on DiscriminatorImg
+                            self.di_optimizer.zero_grad()
+                            di_loss_tot.backward()
+                            self.di_optimizer.step()
 
-                        # Back prop on DiscriminatorImg
-                        self.di_optimizer.zero_grad()
-                        di_loss_tot.backward()
-                        self.di_optimizer.step()
-
-                        now = datetime.datetime.now()
+                            now = datetime.datetime.now()
 
                     logging.info('[{h}:{m}[Epoch {e}] Loss: {t}'.format(h=now.hour, m=now.minute, e=epoch, t=loss.item()))
-                    print_timestamp("[Epoch {epoch:d}] Loss: {loss.item():f}")
+                    print_timestamp("[Epoch {e:d}] Loss: {t:f}".format(e=epoch, t=loss.item()))
                     to_save_models = models_saving in ('always', 'tail')
                     cp_path = self.save(where_to_save_epoch, to_save_models=to_save_models)
                     if models_saving == 'tail':
