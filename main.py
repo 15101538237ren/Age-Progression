@@ -3,6 +3,7 @@ import model
 import logging
 from util import *
 from option import parser
+from torchvision.datasets.folder import pil_loader
 
 if __name__ == '__main__':
     requirement_check()
@@ -48,4 +49,23 @@ if __name__ == '__main__':
             should_plot=args.sp,
             where_to_save=results_dest,
             models_saving=args.models_saving
+        )
+    elif args.mode == 'test':
+
+        if args.load is None:
+            raise RuntimeError("Must provide path of trained models")
+
+        net.load(path=args.load, slim=True)
+
+        results_dest = args.output or default_test_results_dir()
+        if not os.path.isdir(results_dest):
+            os.makedirs(results_dest)
+
+        image_tensor = pil_to_model_tensor_transform(pil_loader(args.input)).to(net.device)
+        net.test_single(
+            image_tensor=image_tensor,
+            age=args.age,
+            gender=args.gender,
+            target=results_dest,
+            watermark=args.watermark
         )

@@ -12,7 +12,7 @@ def str_to_gender(s):
         raise KeyError("No gender found")
 
 parser = argparse.ArgumentParser(description="AgeProgression on PyTorch.")
-parser.add_argument("--mode", choices=["train", "test"], default="train")
+parser.add_argument("--mode", choices=["train", "test"], default="test")
 
 # train params
 parser.add_argument(

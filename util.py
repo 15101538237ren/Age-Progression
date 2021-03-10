@@ -45,6 +45,9 @@ def remove_trained(folder):
 def default_train_results_dir():
     return os.path.join('.', 'trained_models', datetime.datetime.now().strftime(fmt), datetime.datetime.now().strftime(fmt_t))
 
+def default_test_results_dir(eval=True):
+    return os.path.join('.', 'test_results', datetime.datetime.now().strftime(fmt) if eval else fmt)
+
 def default_where_to_save(eval=True):
     path_str = os.path.join('.', 'results', datetime.datetime.now().strftime(fmt), datetime.datetime.now().strftime(fmt_t))
     if not os.path.exists(path_str):
@@ -144,6 +147,9 @@ def easy_deconv(in_dims, out_dims, kernel, stride=1, groups=1, bias=True, dilati
 def two_sided(x):
     return 2 * (x - 0.5)
 
+def one_sided(x):
+    return (x + 1) / 2
+
 def str_to_tensor(text, normalize=False):
     age_group, gender = text.split('.')
     age_tensor = -torch.ones(consts.NUM_AGES)
@@ -167,7 +173,7 @@ def merge_images(batch1, batch2):
     return merged
 
 def save_image_normalized(*args, **kwargs):
-    save_image(normalize=True, range=(-1, 1), padding=4, *args, **kwargs)
+    save_image(*args, **kwargs, normalize=True, range=(-1, 1), padding=4)
 
 class Label(namedtuple('Label', ('age', 'gender'))):
     def __init__(self, age, gender):
